@@ -1,0 +1,9 @@
+{
+  "name": "udham-swe",
+  "version": "0.1.0",
+  "description": "Udham's personal SWE AI toolkit - branch review, PKWARE repo cloning, and more",
+  "author": {
+    "name": "Udham Mander",
+    "email": "manderudham@gmail.com"
+  }
+}
