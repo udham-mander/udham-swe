@@ -1,6 +1,6 @@
 {
   "name": "udham-swe",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Udham's personal SWE AI toolkit - branch review, DB helpers, a status line, and a Windows 'flash when done' hook",
   "author": {
     "name": "Udham Mander",

@@ -8,7 +8,7 @@
 
 src="$(dirname "$0")/../statusline/statusline.js"
 dst="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/udham-swe-data}"
-command -v cygpath >/dev/null 2>&1 && dst="$(cygpath -u "$dst")"
+dst="${dst//\\//}"   # Git Bash accepts C:/... paths; avoids spawning cygpath
 
 [ -f "$src" ] || exit 0
 mkdir -p "$dst" 2>/dev/null || exit 0

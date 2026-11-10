@@ -101,7 +101,8 @@ Stop ─► on-stop.sh ─► flash-window.ps1 (hook mode)
 
 State (timestamps, cached DLL) is stored in `$CLAUDE_PLUGIN_DATA/flash` when Claude Code
 provides it, otherwise `~/.claude/udham-swe-data/flash` — never inside the plugin folder,
-which can be replaced on update.
+which can be replaced on update. Timestamp files untouched for 7+ days (sessions that
+have ended) are deleted automatically by the UserPromptSubmit hook.
 
 ### Files
 
