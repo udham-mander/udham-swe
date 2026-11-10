@@ -1,6 +1,17 @@
 {
-  "description": "flash-on-done: flash the Windows Terminal window when Claude finishes a long reply (Windows only; no-op elsewhere). See docs/flash-on-done.md.",
+  "description": "flash-on-done (Windows only; see docs/flash-on-done.md) and status line sync (see docs/statusline.md).",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/sync-statusline.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [

@@ -5,7 +5,7 @@
     {
       "name": "udham-swe",
       "source": "./",
-      "description": "Personal SWE toolkit: branch review, DB helpers, Windows flash-on-done hook"
+      "description": "Personal SWE toolkit: branch review, DB helpers, status line, Windows flash-on-done hook"
     }
   ]
 }

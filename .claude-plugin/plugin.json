@@ -1,7 +1,7 @@
 {
   "name": "udham-swe",
-  "version": "0.2.0",
-  "description": "Udham's personal SWE AI toolkit - branch review, DB helpers, and a Windows 'flash when done' hook",
+  "version": "0.3.0",
+  "description": "Udham's personal SWE AI toolkit - branch review, DB helpers, a status line, and a Windows 'flash when done' hook",
   "author": {
     "name": "Udham Mander",
     "email": "manderudham@gmail.com"

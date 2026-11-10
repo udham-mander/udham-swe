@@ -9,12 +9,22 @@ Personal SWE AI toolkit — skills, commands, prompts, and workflows for use wit
 | `review-branch` | `rb` | Thorough PR/branch code review with deep dive analysis |
 | `db-migration` | `migrate` | Run DgSecure Controller database migrations with backup & verification |
 | `postgres-connect` | `pg` | Connect to PostgreSQL with interactive credential prompts |
+| `statusline-setup` | — | Point your status line at the plugin's [status line](docs/statusline.md) script |
 
 ### Hooks
 
 | Hook | Platform | Description |
 |------|----------|-------------|
 | [`flash-on-done`](docs/flash-on-done.md) | Windows only | Flashes the Windows Terminal window when Claude finishes a long reply, repeating until you return. No-op on macOS/Linux/WSL. |
+| [status line sync](docs/statusline.md) | All | On session start, copies the status line script to a stable path so updates apply automatically. |
+
+### Status line
+
+```
+udham-swe (main) │ Opus 5.5 · xhigh │ ctx 26% 259k/1M │ 5h 7% ↻2h13m
+```
+
+Folder + git branch, model + effort, context used, and the 5-hour usage limit with its reset countdown. Requires Node.js 18+. Set it up with `/udham-swe:statusline-setup` — see [docs/statusline.md](docs/statusline.md).
 
 ## Installation
 
