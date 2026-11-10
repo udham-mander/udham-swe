@@ -1,0 +1,11 @@
+{
+  "name": "udham-swe",
+  "owner": { "name": "Udham Mander" },
+  "plugins": [
+    {
+      "name": "udham-swe",
+      "source": "./",
+      "description": "Personal SWE toolkit: branch review, DB helpers, Windows flash-on-done hook"
+    }
+  ]
+}

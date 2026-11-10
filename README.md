@@ -7,27 +7,32 @@ Personal SWE AI toolkit — skills, commands, prompts, and workflows for use wit
 | Resource | Alias | Description |
 |----------|-------|-------------|
 | `review-branch` | `rb` | Thorough PR/branch code review with deep dive analysis |
-| `pk-repo-cloner` | — | Clone PK Bitbucket repositories |
 | `db-migration` | `migrate` | Run DgSecure Controller database migrations with backup & verification |
 | `postgres-connect` | `pg` | Connect to PostgreSQL with interactive credential prompts |
+
+### Hooks
+
+| Hook | Platform | Description |
+|------|----------|-------------|
+| [`flash-on-done`](docs/flash-on-done.md) | Windows only | Flashes the Windows Terminal window when Claude finishes a long reply, repeating until you return. No-op on macOS/Linux/WSL. |
 
 ## Installation
 
 ### Claude Code Plugin
 
+At the Claude Code prompt:
+
+```
+/plugin install udham-swe --marketplace udham-mander/udham-swe
+```
+
+Answer `y` to add the marketplace, then choose a scope. To update later, run `/plugin` and update the marketplace.
+
+For local development, run straight from a clone:
+
 ```bash
 git clone https://github.com/udham-mander/udham-swe.git
 claude --plugin-dir /path/to/udham-swe
-```
-
-Or add permanently to your settings (`~/.claude/settings.json`):
-
-```json
-{
-  "plugins": [
-    "/path/to/udham-swe"
-  ]
-}
 ```
 
 ### Other AI Harnesses (Codex, Copilot, etc.)
@@ -41,7 +46,6 @@ The command markdown files in `commands/` are portable prompt definitions. You c
 ```
 commands/
 ├── review-branch.md       # PR review workflow & output format
-├── pk-repo-cloner.md  # Repo cloning instructions
 ├── db-migration.md        # Migration automation workflow
 └── postgres-connect.md    # Database connection workflow
 ```
@@ -50,7 +54,7 @@ commands/
 
 - **For database commands** (`db-migration`, `postgres-connect`): PostgreSQL client (`psql`) in PATH
 - **For migrations**: Java runtime (for DgScriptExecutor JAR)
-- **For repo cloning**: Git with SSH keys configured for Bitbucket
+- **For `flash-on-done`**: Windows 10/11, Windows Terminal, Windows PowerShell 5.1, Git Bash ([details](docs/flash-on-done.md#requirements))
 
 ## Platform Support
 
@@ -60,14 +64,13 @@ Database commands auto-detect the runtime environment and adapt:
 - **Linux** — native support
 - **Windows** — uses batch files for reliable PostgreSQL credential handling
 
+The `flash-on-done` hook is **Windows only**: its scripts check the OS first and exit silently on macOS, Linux and WSL, so installing the plugin there is safe.
+
 ## Quick Examples
 
 ```
 # Review a PR branch
 /rb feature/add-user-auth
-
-# Clone a PK repo
-/pk-repo-cloner dgsecure-dbms
 
 # Connect to PostgreSQL
 /pg mydb postgres
