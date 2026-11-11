@@ -81,11 +81,11 @@ function scoreLines(d, { allWeeks = false } = {}) {
   L.push(`  ${"total".padEnd(23)}${pad(sc.totals.jiraDone, 6)}${pad(sc.totals.prsMerged, 8)}${pad(sc.totals.prsReviewed, 10)}${pad(sc.totals.total, 7)}`);
   const from = allWeeks ? sc.since : sc.weeks[0].start;
   const inRange = (iso) => day(iso) >= from;
-  const jira = (d.jiraDone || []).filter((j) => inRange(j.statusCategoryChangedAt || j.resolved));
+  const jira = (d.jiraDone || []).filter((j) => inRange(j.doneAt));   // doneAt: set by the app (one rule, lib/score.js)
   const prs = (d.github.closed || []).filter((pr) => inRange(pr.closedAt));
   const rv = (d.github.reviewed || []).filter((pr) => inRange(pr.lastReviewAt));
   L.push(`  ${allWeeks ? "In this period" : "This week"}: ${jira.length} Jira done, ${prs.length} PRs closed, ${rv.length} reviewed`);
-  for (const j of jira) L.push(`    ${j.key} done ${day(j.statusCategoryChangedAt || j.resolved)} — ${j.summary}`);
+  for (const j of jira) L.push(`    ${j.key} done ${day(j.doneAt)} — ${j.summary}`);
   for (const pr of prs) L.push(`    ${pr.repo}#${pr.number} ${pr.merged ? "merged" : "closed"} ${day(pr.closedAt)} — ${pr.title}`);
   for (const pr of rv) L.push(`    reviewed ${pr.repo}#${pr.number} (${(pr.lastReviewState || "").toLowerCase()} ${day(pr.lastReviewAt)}) by ${pr.author} — ${pr.title}`);
   return L;
