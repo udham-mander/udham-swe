@@ -10,6 +10,7 @@ Personal SWE AI toolkit — skills, commands, prompts, and workflows for use wit
 | `db-migration` | `migrate` | Run DgSecure Controller database migrations with backup & verification |
 | `postgres-connect` | `pg` | Connect to PostgreSQL with interactive credential prompts |
 | `statusline-setup` | — | Point your status line at the plugin's [status line](docs/statusline.md) script |
+| `daily-dashboard` | — | Drive the [Daily Dashboard](https://github.com/udham-mander/daily-dashboard) app from Claude: starts it if needed, reads Jira / PRs / reviews / notes, adds notes, and acts on items with `gh` and the Atlassian connector |
 
 ### Hooks
 
@@ -96,3 +97,7 @@ This is a personal toolkit that grows over time. Feel free to fork and adapt for
 ## Author
 
 Udham Mander — manderudham@gmail.com
+
+## License
+
+[MIT](LICENSE).

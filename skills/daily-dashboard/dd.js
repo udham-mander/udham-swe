@@ -1,0 +1,159 @@
+#!/usr/bin/env node
+// CLI for the Daily Dashboard app (https://github.com/udham-mander/daily-dashboard):
+// starts it if needed and talks to its local API.
+//
+//   node dd.js ensure                 start the app (no browser window) if it isn't running
+//   node dd.js summary                compact text view of Jira, my PRs, reviews, notes
+//   node dd.js refresh                force fresh GitHub + Jira data (waits for Jira), then summary
+//   node dd.js json                   the raw /api/data JSON
+//   node dd.js add <text...>          add a timestamped entry to today's notes log
+//   node dd.js note <key> <text...>   add/replace a note on an item for today ("" deletes)
+//   node dd.js history [days]         saved notes from recent days (default 7)
+//   node dd.js open                   open the page in the browser
+//   node dd.js quit                   stop the app
+//
+// Note keys: summary | jira:<KEY> | pr:<owner/repo>#<n> | review:<owner/repo>#<n>
+const http = require("http");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const { spawn } = require("child_process");
+
+const APP_DIR = path.join(os.homedir(), ".daily-dashboard");
+const PORT = Number(process.env.DAILY_DASHBOARD_PORT) || (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(APP_DIR, "config.json"), "utf8")).port || 4317; } catch { return 4317; }
+})();
+const ORIGIN = `http://127.0.0.1:${PORT}`;
+
+function request(method, pathname, body) {
+  return new Promise((resolve, reject) => {
+    const data = body === undefined ? null : JSON.stringify(body);
+    // Writes need the app's own Origin plus x-dd (its cross-site request protection).
+    const headers = data ? { "content-type": "application/json", "x-dd": "1", origin: ORIGIN, "content-length": Buffer.byteLength(data) } : {};
+    const req = http.request({ host: "127.0.0.1", port: PORT, method, path: pathname, headers, timeout: 90000 }, (res) => {
+      let b = ""; res.on("data", (c) => (b += c));
+      res.on("end", () => {
+        let json; try { json = JSON.parse(b); } catch { return reject(new Error(`bad response (${res.statusCode})`)); }
+        res.statusCode >= 400 ? reject(new Error(json.error || `HTTP ${res.statusCode}`)) : resolve(json);
+      });
+    });
+    req.on("timeout", () => req.destroy(new Error("request timed out")));
+    req.on("error", reject);
+    if (data) req.write(data);
+    req.end();
+  });
+}
+const get = (p) => request("GET", p);
+const post = (p, b) => request("POST", p, b);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function running() {
+  try { return (await get("/api/ping")).app === "daily-dashboard"; } catch { return false; }
+}
+
+async function ensure() {
+  if (await running()) return "already running";
+  const launcher = path.join(APP_DIR, "launch.vbs");
+  if (process.platform !== "win32" || !fs.existsSync(launcher))
+    throw new Error(`Daily Dashboard isn't running and no launcher was found at ${launcher}. ` +
+      "Install it (npm run install-shortcut in the daily-dashboard repo) or start it with `node app.js`.");
+  spawn("wscript.exe", [launcher, "--no-open"], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+  for (let i = 0; i < 40; i++) { await sleep(500); if (await running()) return "started"; }
+  throw new Error(`started the launcher but the app did not answer on ${ORIGIN}; see ${path.join(APP_DIR, "app.log")}`);
+}
+
+const days = (iso) => iso ? Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86400000)) : null;
+const mins = (iso) => { if (!iso) return "never"; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+const KEY_RE = /\b[A-Z][A-Z0-9]+-\d+\b/g;
+
+function summary(d) {
+  const L = [];
+  const js = d.jiraStatus, notes = d.todayNotes || {}, prev = d.previous;
+  const note = (k) => (notes[k] ? `\n      note: ${notes[k].replace(/\n/g, " / ")}` : "") +
+    (prev?.notes?.[k] ? `\n      prev (${prev.date}): ${prev.notes[k].replace(/\n/g, " / ")}` : "");
+  L.push(`Daily Dashboard — ${d.today}${d.github.login ? ` (@${d.github.login})` : ""} · ${ORIGIN}`);
+  L.push(`GitHub ${mins(d.githubFetchedAt)}${d.githubError ? ` — ERROR: ${d.githubError}` : ""} · ` +
+    `Jira ${js.running ? "refreshing…" : mins(js.fetchedAt)} via ${js.source}${js.error ? ` — last refresh failed: ${js.error}` : ""}`);
+  L.push(`Progress folder: ${d.progressDir}`, "");
+
+  const prsByKey = {};
+  for (const pr of d.github.mine) for (const k of new Set(`${pr.title} ${pr.branch}`.match(KEY_RE) || [])) (prsByKey[k] ||= []).push(`${pr.repo}#${pr.number}`);
+  const order = { "In Progress": 0, "To Do": 1 };
+  const jira = [...d.jira].sort((a, b) => (order[a.statusCategory] ?? 2) - (order[b.statusCategory] ?? 2) || (a.key > b.key ? 1 : -1));
+  L.push(`MY JIRA (${jira.length})`);
+  for (const j of jira) {
+    const dur = j.statusCategory === "In Progress" ? `in progress ${days(j.statusCategoryChangedAt)}d` : `not started (created ${days(j.created)}d ago)`;
+    L.push(`  ${j.key} [${j.status}] ${dur} · ${j.type} · ${j.priority} — ${j.summary}` +
+      (prsByKey[j.key] ? ` · PRs: ${prsByKey[j.key].join(", ")}` : "") + `\n      ${j.url}` + note(`jira:${j.key}`));
+  }
+  L.push("", `MY PULL REQUESTS (${d.github.mine.length})`);
+  for (const pr of d.github.mine)
+    L.push(`  ${pr.repo}#${pr.number} open ${days(pr.createdAt)}d — ${pr.title}\n      pending: ${pr.pending.map((n) => n.text).join("; ")}\n      ${pr.url}` + note(`pr:${pr.repo}#${pr.number}`));
+  const rv = [...d.github.toReview].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  L.push("", `NEEDS MY REVIEW (${rv.length}, oldest first)`);
+  for (const pr of rv)
+    L.push(`  ${pr.repo}#${pr.number} open ${days(pr.createdAt)}d by ${pr.author}${pr.draft ? " (draft)" : ""} — ${pr.title}\n      ${pr.url}` + note(`review:${pr.repo}#${pr.number}`));
+  const time = (iso) => new Date(iso).toTimeString().slice(0, 5);
+  const log = (entries, summaryText) => [
+    ...(summaryText ? [`  Summary: ${summaryText.replace(/\n/g, " / ")}`] : []),
+    ...(entries ?? []).map((e) => `  ${time(e.at)}  ${e.text.replace(/\n/g, " / ")}`),
+  ];
+  const today = log(d.todayEntries, notes.summary);
+  L.push("", `TODAY'S NOTES (${today.length})`, ...(today.length ? today : ["  (none yet)"]));
+  if (prev) {
+    const p = log(prev.entries, prev.notes?.summary);
+    if (p.length) L.push(`PREVIOUS DAY'S NOTES (${prev.date})`, ...p);
+  }
+  return L.join("\n");
+}
+
+async function main() {
+  const [cmd = "summary", ...rest] = process.argv.slice(2);
+  if (cmd === "ensure") return console.log(`Daily Dashboard ${await ensure()} at ${ORIGIN}`);
+  if (cmd === "quit") {
+    if (!(await running())) return console.log("Daily Dashboard is not running.");
+    await post("/api/quit", {});
+    for (let i = 0; i < 20 && (await running()); i++) await sleep(250);   // the app exits ~200 ms after replying
+    return console.log("Daily Dashboard stopped.");
+  }
+  await ensure();
+  switch (cmd) {
+    case "summary": return console.log(summary(await get("/api/data")));
+    case "json": return console.log(JSON.stringify(await get("/api/data"), null, 2));
+    case "refresh": {
+      await post("/api/refresh", {});
+      for (let i = 0; i < 60; i++) { if (!(await get("/api/status")).jiraStatus.running) break; await sleep(3000); }
+      return console.log(summary(await get("/api/data")));
+    }
+    case "add": {
+      const text = rest.join(" ").trim();
+      if (!text) throw new Error("usage: add <text>");
+      const r = await post("/api/entries", { text });
+      return console.log(`Added to today's notes at ${new Date(r.entry.at).toTimeString().slice(0, 5)} (${r.entries.length} today)`);
+    }
+    case "note": {
+      const [key, ...words] = rest;
+      if (!key || !/^(summary$|jira:|pr:|review:)/.test(key)) throw new Error("usage: note <summary|jira:KEY|pr:owner/repo#N|review:owner/repo#N> <text>");
+      const r = await post("/api/save", { notes: { [key]: words.join(" ") } });
+      return console.log(`${words.join(" ").trim() ? "Saved" : "Deleted"} note "${key}" in ${r.files[0]}`);
+    }
+    case "history": {
+      const h = await get(`/api/history?days=${Number(rest[0]) || 7}`);
+      if (!h.days.length) return console.log(`No saved days in ${h.progressDir} yet.`);
+      for (const day of h.days) {
+        console.log(`${day.date}  (${day.counts?.jira ?? "?"} Jira, ${day.counts?.myPRs ?? "?"} PRs, ${day.counts?.toReview ?? "?"} to review)`);
+        for (const e of day.entries || []) console.log(`  ${new Date(e.at).toTimeString().slice(0, 5)}  ${e.text.replace(/\n/g, " / ")}`);
+        for (const [k, v] of Object.entries(day.notes || {})) console.log(`  ${k}: ${v.replace(/\n/g, " / ")}`);
+      }
+      return;
+    }
+    case "open": {
+      const [c, a] = process.platform === "win32" ? ["cmd", ["/c", "start", "", `${ORIGIN}/`]] : process.platform === "darwin" ? ["open", [`${ORIGIN}/`]] : ["xdg-open", [`${ORIGIN}/`]];
+      spawn(c, a, { detached: true, stdio: "ignore", windowsHide: true }).unref();
+      return console.log(`Opened ${ORIGIN}/`);
+    }
+    default: throw new Error(`unknown command "${cmd}" (ensure|summary|refresh|json|add|note|history|open|quit)`);
+  }
+}
+
+main().catch((e) => { console.error(`dd: ${e.message}`); process.exit(1); });
