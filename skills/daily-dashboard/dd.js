@@ -11,6 +11,7 @@
 //   node dd.js note <key> <text...>   add/replace a note on an item for today ("" deletes)
 //   node dd.js history [days]         saved notes from recent days (default 7)
 //   node dd.js auto [date]            rebuild the automatic points (GitHub/Jira activity summarized by Claude) now
+//   node dd.js agent [on|off]         show or switch the Activity agent (the automatic side of the app)
 //   node dd.js launch [dir]           open a new Claude Code session in a terminal (the default folder, or dir)
 //   node dd.js open                   open the page in the browser
 //   node dd.js quit                   stop the app
@@ -106,7 +107,7 @@ function summary(d) {
   L.push(`Daily Dashboard — ${d.today}${d.github.login ? ` (@${d.github.login})` : ""} · ${ORIGIN}`);
   L.push(`GitHub ${mins(d.githubFetchedAt)}${d.githubError ? ` — ERROR: ${d.githubError}` : ""} · ` +
     `Jira ${js.running ? "refreshing…" : mins(js.fetchedAt)} via ${js.source}${js.error ? ` — last refresh failed: ${js.error}` : ""}`);
-  L.push(`Progress folder: ${d.progressDir}`, "");
+  L.push(`Progress folder: ${d.progressDir} · Activity agent: ${d.autoStatus?.enabled ? "on" : "off"}`, "");
 
   const prsByKey = {};
   for (const pr of d.github.mine) for (const k of new Set(`${pr.title} ${pr.branch}`.match(KEY_RE) || [])) (prsByKey[k] ||= []).push(`${pr.repo}#${pr.number}`);
@@ -149,7 +150,8 @@ function autoLines(auto, status) {
   const time = (iso) => new Date(iso).toTimeString().slice(0, 5);
   return [`AUTOMATIC POINTS (updated ${time(auto.updatedAt)} via ${auto.source}${auto.eodSavedAt ? `; day saved automatically at ${time(auto.eodSavedAt)}` : ""})`,
     ...(auto.points.length ? auto.points.map((p) => `  - ${p}`) : ["  (nothing recorded yet)"]),
-    ...(auto.errors?.length ? [`  note: ${auto.errors.join("; ")}`] : [])];
+    ...(auto.errors?.length ? [`  note: ${auto.errors.join("; ")}`] : []),
+    ...(auto.nudges?.length ? [`AGENT'S TAKE (what deserves attention today, the app's own judgement)`, ...auto.nudges.map((n, i) => `  ${i + 1}. ${n}`)] : [])];
 }
 
 async function main() {
@@ -194,6 +196,13 @@ async function main() {
       }
       return;
     }
+    case "agent": {
+      const arg = (rest[0] || "").toLowerCase();
+      if (!arg) return console.log(`Activity agent: ${(await get("/api/data")).autoStatus?.enabled ? "on" : "off"}`);
+      if (arg !== "on" && arg !== "off") throw new Error("usage: agent [on|off]");
+      const r = await post("/api/agent", { enabled: arg === "on" });
+      return console.log(`Activity agent: ${r.autoStatus.enabled ? "on" : "off"} (remembered in the config)`);
+    }
     case "auto": {
       const r = await post("/api/auto", rest[0] ? { date: rest[0] } : {});
       return console.log(autoLines(r.auto, r.autoStatus).join("\n") || `Nothing recorded for ${r.date}.`);
@@ -208,7 +217,7 @@ async function main() {
       spawn(c, a, { detached: true, stdio: "ignore", windowsHide: true }).unref();
       return console.log(`Opened ${ORIGIN}/`);
     }
-    default: throw new Error(`unknown command "${cmd}" (ensure|summary|score|refresh|json|add|note|history|auto|launch|open|quit)`);
+    default: throw new Error(`unknown command "${cmd}" (ensure|summary|score|refresh|json|add|note|history|auto|agent|launch|open|quit)`);
   }
 }
 
