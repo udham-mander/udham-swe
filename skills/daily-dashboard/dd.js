@@ -12,6 +12,7 @@
 //   node dd.js history [days]         saved notes from recent days (default 7)
 //   node dd.js auto [date]            rebuild the automatic points (GitHub/Jira activity summarized by Claude) now
 //   node dd.js agent [on|off]         show or switch the Activity agent (the automatic side of the app)
+//   node dd.js blacklist [add <text>|remove <id|item>]   what the user crossed off the agent's take; add/put back
 //   node dd.js launch [dir]           open a new Claude Code session in a terminal (the default folder, or dir)
 //   node dd.js open                   open the page in the browser
 //   node dd.js quit                   stop the app
@@ -143,6 +144,10 @@ function summary(d) {
   return L.join("\n");
 }
 
+// Same shape as the app's labelOf(): the items an entry names, or its wording in quotes (clipped here).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const blackLabel = (e) => (e.refs?.length ? e.refs.join(", ") : `"${e.text.length > 80 ? `${e.text.slice(0, 80)}…` : e.text}"`);
+
 // Automatic points: built by the app from GitHub events + Jira changes (summarized by Claude).
 function autoLines(auto, status) {
   if (status && status.enabled === false) return [];
@@ -151,7 +156,7 @@ function autoLines(auto, status) {
   return [`AUTOMATIC POINTS (updated ${time(auto.updatedAt)} via ${auto.source}${auto.eodSavedAt ? `; day saved automatically at ${time(auto.eodSavedAt)}` : ""})`,
     ...(auto.points.length ? auto.points.map((p) => `  - ${p}`) : ["  (nothing recorded yet)"]),
     ...(auto.errors?.length ? [`  note: ${auto.errors.join("; ")}`] : []),
-    ...(auto.nudges?.length ? [`AGENT'S TAKE (what deserves attention today, the app's own judgement)`, ...auto.nudges.map((n, i) => `  ${i + 1}. ${n}`)] : [])];
+    ...(auto.nudges?.length ? [`AGENT'S TAKE (what deserves attention today, the app's own judgement; "blacklist add <item>" drops one for good)`, ...auto.nudges.map((n, i) => `  ${i + 1}. ${n}`)] : [])];
 }
 
 async function main() {
@@ -198,10 +203,37 @@ async function main() {
     }
     case "agent": {
       const arg = (rest[0] || "").toLowerCase();
-      if (!arg) return console.log(`Activity agent: ${(await get("/api/data")).autoStatus?.enabled ? "on" : "off"}`);
+      if (!arg) {
+        const st = (await get("/api/status")).autoStatus || {};
+        return console.log(`Activity agent: ${st.enabled ? "on" : "off"} · blacklist: ${st.blacklist?.length ? `${st.blacklist.length} entr${st.blacklist.length === 1 ? "y" : "ies"} (node dd.js blacklist)` : "empty"}`);
+      }
       if (arg !== "on" && arg !== "off") throw new Error("usage: agent [on|off]");
       const r = await post("/api/agent", { enabled: arg === "on" });
       return console.log(`Activity agent: ${r.autoStatus.enabled ? "on" : "off"} (remembered in the config)`);
+    }
+    // The agent's blacklist: what the user crossed off the take (an item like dbms#11 / ABC-123, or a wording).
+    case "blacklist": {
+      const sub = (rest[0] || "").toLowerCase();
+      if (!sub) {
+        const b = (await get("/api/status")).autoStatus?.blacklist || [];
+        if (!b.length) return console.log("Blacklist: empty — the agent may bring anything up.");
+        return console.log([`BLACKLIST (${b.length}; the agent leaves these out of its take)`, ...b.map((e) => `  ${blackLabel(e)}  · id ${e.id}${e.date ? ` · ${e.date}` : ""}`)].join("\n"));
+      }
+      if (sub === "add") {
+        const text = rest.slice(1).join(" ").trim();
+        if (!text) throw new Error("usage: blacklist add <item or text>   e.g. blacklist add dbms#11");
+        const r = await post("/api/blacklist/add", { text });
+        const take = r.auto ? `today's take now has ${r.auto.nudges?.length ?? 0} point(s)` : "no take built yet today";
+        return console.log(r.added ? `Blacklisted ${blackLabel(r.entry)} (id ${r.entry.id}); ${take}` : `Already on the blacklist as ${blackLabel(r.entry)} (id ${r.entry.id}); ${take}`);
+      }
+      if (sub === "remove") {
+        const what = rest.slice(1).join(" ").trim();
+        if (!what) throw new Error("usage: blacklist remove <id or item>");
+        // An id removes that entry; anything else removes every entry covering that item or wording (the app does the matching).
+        const r = await post("/api/blacklist/remove", UUID_RE.test(what) ? { id: what } : { text: what });
+        return console.log(`Took ${blackLabel(r.entry)} off the blacklist${r.removed > 1 ? ` (${r.removed} entries)` : ""}`);
+      }
+      throw new Error("usage: blacklist [add <text>|remove <id|item>]");
     }
     case "auto": {
       const r = await post("/api/auto", rest[0] ? { date: rest[0] } : {});
@@ -217,7 +249,7 @@ async function main() {
       spawn(c, a, { detached: true, stdio: "ignore", windowsHide: true }).unref();
       return console.log(`Opened ${ORIGIN}/`);
     }
-    default: throw new Error(`unknown command "${cmd}" (ensure|summary|score|refresh|json|add|note|history|auto|agent|launch|open|quit)`);
+    default: throw new Error(`unknown command "${cmd}" (ensure|summary|score|refresh|json|add|note|history|auto|agent|blacklist|launch|open|quit)`);
   }
 }
 

@@ -26,6 +26,7 @@ node "$DD" summary              # starts the app if needed, prints a compact vie
 | `node "$DD" history [days]` | Saved days: log entries, automatic points + item notes (standups, weekly recaps) |
 | `node "$DD" auto [date]` | Rebuild the day's **automatic points** now (GitHub events + Jira changes with PR/Jira details, summarized by the app's own Claude call, ~25 s). `summary` shows the current ones and the agent's take |
 | `node "$DD" agent [on\|off]` | Show or switch the **Activity agent** (everything the app does on its own: automatic points, the take, the 17:00 save). Switch it only when the user asks |
+| `node "$DD" blacklist [add <item or text>\|remove <id or item>]` | The agent's **blacklist**: what the user crossed off the take. "Stop reminding me about dbms#11" → `blacklist add dbms#11` (an item like `repo#n` / `ABC-123`, or a wording); `remove` puts one back. Only on the user's say-so |
 | `node "$DD" launch [dir]` | Open a **new Claude Code session** in a terminal window — in the user's default folder, or in `dir` (absolute path). The app remembers the 5 most recent folders (`json` → `claude.recent`) |
 | `node "$DD" open` | Open the page in the user's browser |
 | `node "$DD" ensure` | Just make sure the app is running |
