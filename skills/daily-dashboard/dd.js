@@ -5,10 +5,12 @@
 //   node dd.js ensure                 start the app (no browser window) if it isn't running
 //   node dd.js summary                compact text view of Jira, my PRs, reviews, notes
 //   node dd.js refresh                force fresh GitHub + Jira data (waits for Jira), then summary
+//   node dd.js score                  weekly score table + everything finished in the period
 //   node dd.js json                   the raw /api/data JSON
 //   node dd.js add <text...>          add a timestamped entry to today's notes log
 //   node dd.js note <key> <text...>   add/replace a note on an item for today ("" deletes)
 //   node dd.js history [days]         saved notes from recent days (default 7)
+//   node dd.js launch [dir]           open a new Claude Code session in a terminal (the default folder, or dir)
 //   node dd.js open                   open the page in the browser
 //   node dd.js quit                   stop the app
 //
@@ -66,6 +68,29 @@ const days = (iso) => iso ? Math.max(0, Math.floor((Date.now() - Date.parse(iso)
 const mins = (iso) => { if (!iso) return "never"; const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
 const KEY_RE = /\b[A-Z][A-Z0-9]+-\d+\b/g;
 
+// "Our score": the weekly table, then what was finished in the current week.
+function scoreLines(d, { allWeeks = false } = {}) {
+  const sc = d.score;
+  if (!sc?.weeks?.length) return [];
+  // Local calendar day, like the app (an ISO date's UTC slice can be a day off in the evening).
+  const day = (iso) => { if (!iso) return "?"; const d = new Date(iso); return [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n) => String(n).padStart(2, "0")).join("-"); };
+  const L = [`DONE & SCORE (${sc.weeks.length} weeks, since ${sc.since})`];
+  const pad = (s, n) => String(s).padStart(n);
+  L.push(`  ${"week".padEnd(23)}${pad("jira", 6)}${pad("merged", 8)}${pad("reviewed", 10)}${pad("total", 7)}`);
+  sc.weeks.forEach((w, i) => L.push(`  ${`${i === 0 ? "this week " : i === 1 ? "last week " : ""}${w.start}`.padEnd(23)}${pad(w.jiraDone, 6)}${pad(w.prsMerged, 8)}${pad(w.prsReviewed, 10)}${pad(w.total, 7)}`));
+  L.push(`  ${"total".padEnd(23)}${pad(sc.totals.jiraDone, 6)}${pad(sc.totals.prsMerged, 8)}${pad(sc.totals.prsReviewed, 10)}${pad(sc.totals.total, 7)}`);
+  const from = allWeeks ? sc.since : sc.weeks[0].start;
+  const inRange = (iso) => day(iso) >= from;
+  const jira = (d.jiraDone || []).filter((j) => inRange(j.statusCategoryChangedAt || j.resolved));
+  const prs = (d.github.closed || []).filter((pr) => inRange(pr.closedAt));
+  const rv = (d.github.reviewed || []).filter((pr) => inRange(pr.lastReviewAt));
+  L.push(`  ${allWeeks ? "In this period" : "This week"}: ${jira.length} Jira done, ${prs.length} PRs closed, ${rv.length} reviewed`);
+  for (const j of jira) L.push(`    ${j.key} done ${day(j.statusCategoryChangedAt || j.resolved)} — ${j.summary}`);
+  for (const pr of prs) L.push(`    ${pr.repo}#${pr.number} ${pr.merged ? "merged" : "closed"} ${day(pr.closedAt)} — ${pr.title}`);
+  for (const pr of rv) L.push(`    reviewed ${pr.repo}#${pr.number} (${(pr.lastReviewState || "").toLowerCase()} ${day(pr.lastReviewAt)}) by ${pr.author} — ${pr.title}`);
+  return L;
+}
+
 function summary(d) {
   const L = [];
   const js = d.jiraStatus, notes = d.todayNotes || {}, prev = d.previous;
@@ -93,6 +118,7 @@ function summary(d) {
   L.push("", `NEEDS MY REVIEW (${rv.length}, oldest first)`);
   for (const pr of rv)
     L.push(`  ${pr.repo}#${pr.number} open ${days(pr.createdAt)}d by ${pr.author}${pr.draft ? " (draft)" : ""} — ${pr.title}\n      ${pr.url}` + note(`review:${pr.repo}#${pr.number}`));
+  L.push("", ...scoreLines(d));
   const time = (iso) => new Date(iso).toTimeString().slice(0, 5);
   const log = (entries, summaryText) => [
     ...(summaryText ? [`  Summary: ${summaryText.replace(/\n/g, " / ")}`] : []),
@@ -119,6 +145,7 @@ async function main() {
   await ensure();
   switch (cmd) {
     case "summary": return console.log(summary(await get("/api/data")));
+    case "score": return console.log(scoreLines(await get("/api/data"), { allWeeks: true }).join("\n") || "No score data yet.");
     case "json": return console.log(JSON.stringify(await get("/api/data"), null, 2));
     case "refresh": {
       await post("/api/refresh", {});
@@ -147,12 +174,17 @@ async function main() {
       }
       return;
     }
+    case "launch": {
+      const dir = rest.join(" ").trim();
+      const r = await post("/api/launch", dir ? { dir } : {});
+      return console.log(`Launched a new Claude session in ${r.dir}\nRecent folders: ${r.recent.join(" | ") || "(none)"}`);
+    }
     case "open": {
       const [c, a] = process.platform === "win32" ? ["cmd", ["/c", "start", "", `${ORIGIN}/`]] : process.platform === "darwin" ? ["open", [`${ORIGIN}/`]] : ["xdg-open", [`${ORIGIN}/`]];
       spawn(c, a, { detached: true, stdio: "ignore", windowsHide: true }).unref();
       return console.log(`Opened ${ORIGIN}/`);
     }
-    default: throw new Error(`unknown command "${cmd}" (ensure|summary|refresh|json|add|note|history|open|quit)`);
+    default: throw new Error(`unknown command "${cmd}" (ensure|summary|score|refresh|json|add|note|history|launch|open|quit)`);
   }
 }
 
