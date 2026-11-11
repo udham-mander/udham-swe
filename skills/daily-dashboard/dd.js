@@ -60,7 +60,13 @@ async function ensure() {
   if (process.platform !== "win32" || !fs.existsSync(launcher))
     throw new Error(`Daily Dashboard isn't running and no launcher was found at ${launcher}. ` +
       "Install it (npm run install-shortcut in the daily-dashboard repo) or start it with `node app.js`.");
-  spawn("wscript.exe", [launcher, "--no-open"], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+  // Start the app with a clean environment: this CLI usually runs inside a Claude Code session,
+  // and the app must not inherit that session's markers (they would make every `claude` it
+  // launches later think it is a child session and stop saving transcripts).
+  const env = { ...process.env };
+  for (const k of Object.keys(env))
+    if (/^(CLAUDECODE|CLAUDE_CODE_(CHILD_SESSION|ENTRYPOINT|SESSION_ID|SESSION_ATTENDED|MESSAGING_SOCKET|MESSAGING_TOKEN|EXECPATH)|CLAUDE_PID|CLAUDE_EFFORT|UDHAM_FLASH_DISABLE)$/i.test(k)) delete env[k];
+  spawn("wscript.exe", [launcher, "--no-open"], { detached: true, stdio: "ignore", windowsHide: true, env }).unref();
   for (let i = 0; i < 40; i++) { await sleep(500); if (await running()) return "started"; }
   throw new Error(`started the launcher but the app did not answer on ${ORIGIN}; see ${path.join(APP_DIR, "app.log")}`);
 }
