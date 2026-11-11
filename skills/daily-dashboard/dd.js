@@ -141,7 +141,7 @@ function autoLines(auto, status) {
   if (status && status.enabled === false) return [];
   if (!auto) return ["AUTOMATIC POINTS: not built yet today (node dd.js auto)"];
   const time = (iso) => new Date(iso).toTimeString().slice(0, 5);
-  return [`AUTOMATIC POINTS (updated ${time(auto.updatedAt)} via ${auto.source})`,
+  return [`AUTOMATIC POINTS (updated ${time(auto.updatedAt)} via ${auto.source}${auto.eodSavedAt ? `; day saved automatically at ${time(auto.eodSavedAt)}` : ""})`,
     ...(auto.points.length ? auto.points.map((p) => `  - ${p}`) : ["  (nothing recorded yet)"]),
     ...(auto.errors?.length ? [`  note: ${auto.errors.join("; ")}`] : [])];
 }
