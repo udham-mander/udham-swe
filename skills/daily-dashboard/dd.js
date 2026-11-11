@@ -10,6 +10,7 @@
 //   node dd.js add <text...>          add a timestamped entry to today's notes log
 //   node dd.js note <key> <text...>   add/replace a note on an item for today ("" deletes)
 //   node dd.js history [days]         saved notes from recent days (default 7)
+//   node dd.js auto [date]            rebuild the automatic points (GitHub/Jira activity summarized by Claude) now
 //   node dd.js launch [dir]           open a new Claude Code session in a terminal (the default folder, or dir)
 //   node dd.js open                   open the page in the browser
 //   node dd.js quit                   stop the app
@@ -126,11 +127,23 @@ function summary(d) {
   ];
   const today = log(d.todayEntries, notes.summary);
   L.push("", `TODAY'S NOTES (${today.length})`, ...(today.length ? today : ["  (none yet)"]));
+  L.push(...autoLines(d.todayAuto, d.autoStatus));
   if (prev) {
     const p = log(prev.entries, prev.notes?.summary);
     if (p.length) L.push(`PREVIOUS DAY'S NOTES (${prev.date})`, ...p);
+    if (prev.auto?.points?.length) L.push(`PREVIOUS DAY'S AUTOMATIC POINTS (${prev.date})`, ...prev.auto.points.map((p) => `  - ${p}`));
   }
   return L.join("\n");
+}
+
+// Automatic points: built by the app from GitHub events + Jira changes (summarized by Claude).
+function autoLines(auto, status) {
+  if (status && status.enabled === false) return [];
+  if (!auto) return ["AUTOMATIC POINTS: not built yet today (node dd.js auto)"];
+  const time = (iso) => new Date(iso).toTimeString().slice(0, 5);
+  return [`AUTOMATIC POINTS (updated ${time(auto.updatedAt)} via ${auto.source})`,
+    ...(auto.points.length ? auto.points.map((p) => `  - ${p}`) : ["  (nothing recorded yet)"]),
+    ...(auto.errors?.length ? [`  note: ${auto.errors.join("; ")}`] : [])];
 }
 
 async function main() {
@@ -170,9 +183,14 @@ async function main() {
       for (const day of h.days) {
         console.log(`${day.date}  (${day.counts?.jira ?? "?"} Jira, ${day.counts?.myPRs ?? "?"} PRs, ${day.counts?.toReview ?? "?"} to review)`);
         for (const e of day.entries || []) console.log(`  ${new Date(e.at).toTimeString().slice(0, 5)}  ${e.text.replace(/\n/g, " / ")}`);
+        for (const p of day.auto?.points || []) console.log(`  auto   ${p.replace(/\n/g, " / ")}`);
         for (const [k, v] of Object.entries(day.notes || {})) console.log(`  ${k}: ${v.replace(/\n/g, " / ")}`);
       }
       return;
+    }
+    case "auto": {
+      const r = await post("/api/auto", rest[0] ? { date: rest[0] } : {});
+      return console.log(autoLines(r.auto, r.autoStatus).join("\n") || `Nothing recorded for ${r.date}.`);
     }
     case "launch": {
       const dir = rest.join(" ").trim();
@@ -184,7 +202,7 @@ async function main() {
       spawn(c, a, { detached: true, stdio: "ignore", windowsHide: true }).unref();
       return console.log(`Opened ${ORIGIN}/`);
     }
-    default: throw new Error(`unknown command "${cmd}" (ensure|summary|score|refresh|json|add|note|history|launch|open|quit)`);
+    default: throw new Error(`unknown command "${cmd}" (ensure|summary|score|refresh|json|add|note|history|auto|launch|open|quit)`);
   }
 }
 
