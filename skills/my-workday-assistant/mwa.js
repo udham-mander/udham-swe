@@ -1,21 +1,21 @@
 #!/usr/bin/env node
-// CLI for the Daily Dashboard app (https://github.com/udham-mander/daily-dashboard):
+// CLI for My workday assistant (https://github.com/udham-mander/my-workday-assistant):
 // starts it if needed and talks to its local API.
 //
-//   node dd.js ensure                 start the app (no browser window) if it isn't running
-//   node dd.js summary                compact text view of Jira, my PRs, reviews, notes
-//   node dd.js refresh                force fresh GitHub + Jira data (waits for Jira), then summary
-//   node dd.js score                  weekly score table + everything finished in the period
-//   node dd.js json                   the raw /api/data JSON
-//   node dd.js add <text...>          add a timestamped entry to today's notes log
-//   node dd.js note <key> <text...>   add/replace a note on an item for today ("" deletes)
-//   node dd.js history [days]         saved notes from recent days (default 7)
-//   node dd.js auto [date]            rebuild the automatic points (GitHub/Jira activity summarized by Claude) now
-//   node dd.js agent [on|off]         show or switch the Activity agent (the automatic side of the app)
-//   node dd.js blacklist [add <text>|remove <id|item>]   what the user crossed off the agent's take; add/put back
-//   node dd.js launch [dir]           open a new Claude Code session in a terminal (the default folder, or dir)
-//   node dd.js open                   open the page in the browser
-//   node dd.js quit                   stop the app
+//   node mwa.js ensure                 start the app (no browser window) if it isn't running
+//   node mwa.js summary                compact text view of Jira, my PRs, reviews, notes
+//   node mwa.js refresh                force fresh GitHub + Jira data (waits for Jira), then summary
+//   node mwa.js score                  weekly score table + everything finished in the period
+//   node mwa.js json                   the raw /api/data JSON
+//   node mwa.js add <text...>          add a timestamped entry to today's notes log
+//   node mwa.js note <key> <text...>   add/replace a note on an item for today ("" deletes)
+//   node mwa.js history [days]         saved notes from recent days (default 7)
+//   node mwa.js auto [date]            rebuild the automatic points (GitHub/Jira activity summarized by Claude) now
+//   node mwa.js agent [on|off]         show or switch the Activity agent (the automatic side of the app)
+//   node mwa.js blacklist [add <text>|remove <id|item>]   what the user crossed off the agent's take; add/put back
+//   node mwa.js launch [dir]           open a new Claude Code session in a terminal (the default folder, or dir)
+//   node mwa.js open                   open the page in the browser
+//   node mwa.js quit                   stop the app
 //
 // Note keys: summary | jira:<KEY> | pr:<owner/repo>#<n> | review:<owner/repo>#<n>
 const http = require("http");
@@ -24,8 +24,8 @@ const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
 
-const APP_DIR = path.join(os.homedir(), ".daily-dashboard");
-const PORT = Number(process.env.DAILY_DASHBOARD_PORT) || (() => {
+const APP_DIR = path.join(os.homedir(), ".my-workday-assistant");
+const PORT = Number(process.env.MY_WORKDAY_ASSISTANT_PORT) || (() => {
   try { return JSON.parse(fs.readFileSync(path.join(APP_DIR, "config.json"), "utf8")).port || 4317; } catch { return 4317; }
 })();
 const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -33,8 +33,8 @@ const ORIGIN = `http://127.0.0.1:${PORT}`;
 function request(method, pathname, body) {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? null : JSON.stringify(body);
-    // Writes need the app's own Origin plus x-dd (its cross-site request protection).
-    const headers = data ? { "content-type": "application/json", "x-dd": "1", origin: ORIGIN, "content-length": Buffer.byteLength(data) } : {};
+    // Writes need the app's own Origin plus x-mwa (its cross-site request protection).
+    const headers = data ? { "content-type": "application/json", "x-mwa": "1", origin: ORIGIN, "content-length": Buffer.byteLength(data) } : {};
     const req = http.request({ host: "127.0.0.1", port: PORT, method, path: pathname, headers, timeout: 90000 }, (res) => {
       let b = ""; res.on("data", (c) => (b += c));
       res.on("end", () => {
@@ -53,15 +53,15 @@ const post = (p, b) => request("POST", p, b);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function running() {
-  try { return (await get("/api/ping")).app === "daily-dashboard"; } catch { return false; }
+  try { return (await get("/api/ping")).app === "my-workday-assistant"; } catch { return false; }
 }
 
 async function ensure() {
   if (await running()) return "already running";
   const launcher = path.join(APP_DIR, "launch.vbs");
   if (process.platform !== "win32" || !fs.existsSync(launcher))
-    throw new Error(`Daily Dashboard isn't running and no launcher was found at ${launcher}. ` +
-      "Install it (npm run install-shortcut in the daily-dashboard repo) or start it with `node app.js`.");
+    throw new Error(`My workday assistant isn't running and no launcher was found at ${launcher}. ` +
+      "Install it (npm run install-shortcut in the my-workday-assistant repo) or start it with `node app.js`.");
   // Start the app with a clean environment: this CLI usually runs inside a Claude Code session,
   // and the app must not inherit that session's markers (they would make every `claude` it
   // launches later think it is a child session and stop saving transcripts).
@@ -105,7 +105,7 @@ function summary(d) {
   const js = d.jiraStatus, notes = d.todayNotes || {}, prev = d.previous;
   const note = (k) => (notes[k] ? `\n      note: ${notes[k].replace(/\n/g, " / ")}` : "") +
     (prev?.notes?.[k] ? `\n      prev (${prev.date}): ${prev.notes[k].replace(/\n/g, " / ")}` : "");
-  L.push(`Daily Dashboard — ${d.today}${d.github.login ? ` (@${d.github.login})` : ""} · ${ORIGIN}`);
+  L.push(`My workday assistant — ${d.today}${d.github.login ? ` (@${d.github.login})` : ""} · ${ORIGIN}`);
   L.push(`GitHub ${mins(d.githubFetchedAt)}${d.githubError ? ` — ERROR: ${d.githubError}` : ""} · ` +
     `Jira ${js.running ? "refreshing…" : mins(js.fetchedAt)} via ${js.source}${js.error ? ` — last refresh failed: ${js.error}` : ""}`);
   L.push(`Progress folder: ${d.progressDir} · Activity agent: ${d.autoStatus?.enabled ? "on" : "off"}`, "");
@@ -151,7 +151,7 @@ const blackLabel = (e) => (e.refs?.length ? e.refs.join(", ") : `"${e.text.lengt
 // Automatic points: built by the app from GitHub events + Jira changes (summarized by Claude).
 function autoLines(auto, status) {
   if (status && status.enabled === false) return [];
-  if (!auto) return ["AUTOMATIC POINTS: not built yet today (node dd.js auto)"];
+  if (!auto) return ["AUTOMATIC POINTS: not built yet today (node mwa.js auto)"];
   const time = (iso) => new Date(iso).toTimeString().slice(0, 5);
   return [`AUTOMATIC POINTS (updated ${time(auto.updatedAt)} via ${auto.source}${auto.eodSavedAt ? `; day saved automatically at ${time(auto.eodSavedAt)}` : ""})`,
     ...(auto.points.length ? auto.points.map((p) => `  - ${p}`) : ["  (nothing recorded yet)"]),
@@ -161,12 +161,12 @@ function autoLines(auto, status) {
 
 async function main() {
   const [cmd = "summary", ...rest] = process.argv.slice(2);
-  if (cmd === "ensure") return console.log(`Daily Dashboard ${await ensure()} at ${ORIGIN}`);
+  if (cmd === "ensure") return console.log(`My workday assistant ${await ensure()} at ${ORIGIN}`);
   if (cmd === "quit") {
-    if (!(await running())) return console.log("Daily Dashboard is not running.");
+    if (!(await running())) return console.log("My workday assistant is not running.");
     await post("/api/quit", {});
     for (let i = 0; i < 20 && (await running()); i++) await sleep(250);   // the app exits ~200 ms after replying
-    return console.log("Daily Dashboard stopped.");
+    return console.log("My workday assistant stopped.");
   }
   await ensure();
   switch (cmd) {
@@ -205,7 +205,7 @@ async function main() {
       const arg = (rest[0] || "").toLowerCase();
       if (!arg) {
         const st = (await get("/api/status")).autoStatus || {};
-        return console.log(`Activity agent: ${st.enabled ? "on" : "off"} · blacklist: ${st.blacklist?.length ? `${st.blacklist.length} entr${st.blacklist.length === 1 ? "y" : "ies"} (node dd.js blacklist)` : "empty"}`);
+        return console.log(`Activity agent: ${st.enabled ? "on" : "off"} · blacklist: ${st.blacklist?.length ? `${st.blacklist.length} entr${st.blacklist.length === 1 ? "y" : "ies"} (node mwa.js blacklist)` : "empty"}`);
       }
       if (arg !== "on" && arg !== "off") throw new Error("usage: agent [on|off]");
       const r = await post("/api/agent", { enabled: arg === "on" });
@@ -253,4 +253,4 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error(`dd: ${e.message}`); process.exit(1); });
+main().catch((e) => { console.error(`mwa: ${e.message}`); process.exit(1); });
